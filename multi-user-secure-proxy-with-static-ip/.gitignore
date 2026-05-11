@@ -1,5 +1,0 @@
-# Local environment
-.env
-
-# Terraform plan artifact
-tfplan

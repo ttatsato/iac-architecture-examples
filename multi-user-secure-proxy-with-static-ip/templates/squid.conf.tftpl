@@ -1,0 +1,33 @@
+http_port 3128
+
+# Split into two ACLs so audit can distinguish business-critical destinations
+# from derivative asset hosts pulled in by the vendor's SPA.
+acl vendor_primary dstdomain ${join(" ", vendor_primary_domains)}
+%{ if length(vendor_asset_domains) > 0 ~}
+acl vendor_assets  dstdomain ${join(" ", vendor_asset_domains)}
+%{ endif ~}
+
+acl SSL_ports port 443
+acl Safe_ports port 80
+acl Safe_ports port 443
+
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access deny to_localhost
+
+http_access allow vendor_primary
+%{ if length(vendor_asset_domains) > 0 ~}
+http_access allow vendor_assets
+%{ endif ~}
+http_access deny all
+
+# Don't leak client identity downstream.
+forwarded_for delete
+via off
+
+# HTTPS via CONNECT: Squid only sees host:port, not URL paths or query
+# strings, so PII in URLs is not logged here. Identity at the user level
+# comes from Cloudflare Access logs, not Squid.
+access_log stdio:/dev/stdout
+cache_log /dev/stderr
+cache deny all
