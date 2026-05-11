@@ -67,3 +67,14 @@ variable "audit_log_retention_days" {
   type        = number
   default     = 400
 }
+
+variable "enable_iap_ssh" {
+  description = <<-EOT
+    Open SSH (TCP/22) to GCP IAP's range (35.235.240.0/20) for debugging.
+    Off by default: the production path is cloudflared dialing out, so the VM
+    has no public ingress. Turn on temporarily to inspect startup-script and
+    container logs via `gcloud compute ssh --tunnel-through-iap`.
+  EOT
+  type        = bool
+  default     = false
+}

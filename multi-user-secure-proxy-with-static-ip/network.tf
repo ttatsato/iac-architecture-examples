@@ -29,6 +29,25 @@ resource "google_compute_address" "static_ip" {
 # so nothing needs to reach this VM from the internet.
 # Default GCP rule denies all ingress.
 
+# Optional: IAP SSH for debugging. Off by default; flip enable_iap_ssh=true
+# to allow `gcloud compute ssh --tunnel-through-iap` from 35.235.240.0/20.
+resource "google_compute_firewall" "iap_ssh" {
+  count = var.enable_iap_ssh ? 1 : 0
+
+  name      = "${var.name_prefix}-iap-ssh"
+  network   = google_compute_network.vpc.name
+  direction = "INGRESS"
+  priority  = 1000
+
+  source_ranges           = ["35.235.240.0/20"]
+  target_service_accounts = [google_service_account.vm.email]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+}
+
 # Egress hardening: deny everything except the ports the VM actually uses.
 # Lower priority number = evaluated first.
 resource "google_compute_firewall" "egress_allowed" {

@@ -3,14 +3,16 @@
 set -euo pipefail
 
 # --- Fetch Tunnel token from Secret Manager via the metadata server ---
+# Parse with python3 (ships with COS) instead of sed: the Secret Manager
+# response is pretty-printed across multiple lines, and line-oriented sed
+# leaks non-data lines into `base64 -d`, which then fails with "invalid input".
 ACCESS_TOKEN=$(curl -sS -H "Metadata-Flavor: Google" \
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
-  | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
 
 TUNNEL_TOKEN=$(curl -sS -H "Authorization: Bearer $ACCESS_TOKEN" \
   "https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/${tunnel_token_secret_id}/versions/latest:access" \
-  | sed -E 's/.*"data":"([^"]+)".*/\1/' \
-  | base64 -d)
+  | python3 -c 'import json,sys,base64; print(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode(), end="")')
 
 # --- Write Squid config ---
 mkdir -p /var/squid
