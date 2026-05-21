@@ -1,0 +1,45 @@
+services:
+  primary:
+    image: postgres:16
+    container_name: pg-primary
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - primary-data:/var/lib/postgresql/data
+      - ./primary/postgresql.conf:/etc/postgresql/postgresql.conf
+      - ./primary/pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - ./primary/init:/docker-entrypoint-initdb.d
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    networks:
+      - pgnet
+
+  standby:
+    image: postgres:16
+    container_name: pg-standby
+    environment:
+      POSTGRES_PASSWORD: postgres
+    depends_on:
+      - primary
+    ports:
+      - "5433:5432"
+    volumes:
+      - standby-data:/var/lib/postgresql/data
+      - ./standby/setup-replica.sh:/setup-replica.sh
+    entrypoint: ["/bin/bash", "/setup-replica.sh"]
+    networks:
+      pgnet:
+        ipv4_address: 172.20.0.10
+
+volumes:
+  primary-data:
+  standby-data:
+
+networks:
+  pgnet:
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
