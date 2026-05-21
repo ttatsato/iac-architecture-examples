@@ -46,3 +46,4 @@ terraform.rc
 
 .environment
 .env
+*.lock.hcl
