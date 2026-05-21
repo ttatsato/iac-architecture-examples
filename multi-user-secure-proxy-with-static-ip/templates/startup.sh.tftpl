@@ -1,0 +1,33 @@
+#!/bin/bash
+# Runs on every VM boot. Idempotent by design: tear down old containers, then start fresh.
+set -euo pipefail
+
+# --- Fetch Tunnel token from Secret Manager via the metadata server ---
+# Parse with python3 (ships with COS) instead of sed: the Secret Manager
+# response is pretty-printed across multiple lines, and line-oriented sed
+# leaks non-data lines into `base64 -d`, which then fails with "invalid input".
+ACCESS_TOKEN=$(curl -sS -H "Metadata-Flavor: Google" \
+  "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+
+TUNNEL_TOKEN=$(curl -sS -H "Authorization: Bearer $ACCESS_TOKEN" \
+  "https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/${tunnel_token_secret_id}/versions/latest:access" \
+  | python3 -c 'import json,sys,base64; print(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode(), end="")')
+
+# --- Write Squid config ---
+mkdir -p /var/squid
+cat > /var/squid/squid.conf <<'SQUID_EOF'
+${squid_conf}
+SQUID_EOF
+
+# --- (Re)start Squid: forward proxy on TCP 3128 ---
+docker rm -f squid >/dev/null 2>&1 || true
+docker run -d --name squid --restart=always --network=host \
+  -v /var/squid/squid.conf:/etc/squid/squid.conf:ro \
+  ubuntu/squid:latest
+
+# --- (Re)start cloudflared: dials out to Cloudflare, exposes this VM via Tunnel ---
+docker rm -f cloudflared >/dev/null 2>&1 || true
+docker run -d --name cloudflared --restart=always --network=host \
+  -e TUNNEL_TOKEN="$TUNNEL_TOKEN" \
+  cloudflare/cloudflared:latest tunnel --no-autoupdate run
